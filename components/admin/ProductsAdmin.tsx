@@ -1,24 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Product,
   Category,
   categoryLabels,
   emptyProduct,
 } from "@/lib/products";
+import {
+  createProduct,
+  deleteProduct,
+  seedCatalog,
+  subscribeProducts,
+  updateProduct,
+} from "@/lib/client/repo";
 import { money } from "../configurator/calc";
 
 /**
  * Cadastro de produtos do Configurador 3D.
- * CRUD via API REST (/api/produtos) + upload de imagens e modelos 3D
- * (/api/upload). Tudo que é salvo aqui aparece automaticamente no
- * configurador — inclusive edições e exclusões.
+ *
+ * Os dados vão para o Firestore (produção) ou localStorage (desenvolvimento).
+ * Imagens são comprimidas no navegador e salvas embutidas no banco — sem
+ * precisar do Firebase Storage (que exige plano pago). Modelos 3D podem ser
+ * um arquivo pequeno (.glb até ~700KB) ou um link externo.
  */
 
 const input =
   "w-full rounded-xl bg-surface-2 border border-line px-4 py-2.5 text-sm font-medium focus:outline-none focus:border-brand transition-all";
 const label = "block text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5";
+
+const MAX_GLB_BYTES = 700 * 1024; // limite p/ caber no documento do Firestore (1MB)
+const MAX_DOC_BYTES = 950 * 1024;
 
 export default function ProductsAdmin() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -27,15 +39,14 @@ export default function ProductsAdmin() {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState<Category | "todas">("todas");
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/produtos", { cache: "no-store" });
-    if (res.ok) setProducts(await res.json());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(
+    () =>
+      subscribeProducts((items) => {
+        setProducts(items);
+        setLoading(false);
+      }),
+    []
+  );
 
   const filtered = useMemo(
     () =>
@@ -48,33 +59,36 @@ export default function ProductsAdmin() {
   );
 
   const save = async (p: Product) => {
-    const isNew = !p.id;
-    const res = await fetch(isNew ? "/api/produtos" : `/api/produtos/${p.id}`, {
-      method: isNew ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
-    });
-    if (res.ok) {
+    if (JSON.stringify(p).length > MAX_DOC_BYTES) {
+      alert(
+        "Produto grande demais para o banco gratuito. Remova alguma imagem ou use um link para o modelo 3D."
+      );
+      return;
+    }
+    try {
+      if (p.id) await updateProduct(p.id, p);
+      else await createProduct(p);
       setEditing(null);
-      await load();
-    } else {
-      alert("Erro ao salvar produto.");
+    } catch {
+      alert("Erro ao salvar. Verifique sua conexão e se você está logado como administrador.");
     }
   };
 
   const remove = async (p: Product) => {
     if (!confirm(`Excluir "${p.nome}"? Ele sumirá do configurador.`)) return;
-    await fetch(`/api/produtos/${p.id}`, { method: "DELETE" });
-    await load();
+    try {
+      await deleteProduct(p.id);
+    } catch {
+      alert("Erro ao excluir. Verifique sua conexão e permissões.");
+    }
   };
 
   const toggleActive = async (p: Product) => {
-    await fetch(`/api/produtos/${p.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ativo: !p.ativo }),
-    });
-    await load();
+    try {
+      await updateProduct(p.id, { ativo: !p.ativo });
+    } catch {
+      alert("Erro ao atualizar. Verifique sua conexão e permissões.");
+    }
   };
 
   return (
@@ -119,6 +133,26 @@ export default function ProductsAdmin() {
       {loading ? (
         <div className="py-20 text-center">
           <div className="w-10 h-10 mx-auto rounded-full border-2 border-brand border-t-transparent animate-spin" />
+        </div>
+      ) : products.length === 0 ? (
+        <div className="card-premium rounded-2xl p-12 text-center">
+          <p className="font-[family-name:var(--font-orbitron)] font-bold mb-2">Banco de produtos vazio</p>
+          <p className="text-muted text-sm font-medium mb-6">
+            Comece do zero com &quot;+ Novo produto&quot; ou carregue o catálogo de exemplo.
+          </p>
+          <button
+            onClick={async () => {
+              try {
+                const n = await seedCatalog();
+                alert(`${n} produtos carregados.`);
+              } catch {
+                alert("Erro ao carregar. Você está logado como administrador?");
+              }
+            }}
+            className="btn-ghost rounded-xl px-6 py-3 text-xs font-bold uppercase tracking-wider text-brand-bright"
+          >
+            Carregar catálogo inicial de exemplo
+          </button>
         </div>
       ) : (
         <div className="card-premium rounded-2xl overflow-x-auto">
@@ -208,6 +242,31 @@ export default function ProductsAdmin() {
   );
 }
 
+/* ---------------- compressão de imagem no navegador ---------------- */
+
+async function compressImage(file: File, maxSize = 640, quality = 0.78): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return canvas.toDataURL("image/webp", quality);
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 /* ---------------- formulário ---------------- */
 
 function ProductForm({
@@ -220,49 +279,55 @@ function ProductForm({
   onClose: () => void;
 }) {
   const [p, setP] = useState<Product>(product);
-  const [uploading, setUploading] = useState<"imagem" | "modelo" | null>(null);
+  const [busy, setBusy] = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
   const glbRef = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<Product>) => setP((prev) => ({ ...prev, ...patch }));
 
-  const upload = async (file: File): Promise<string | null> => {
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err.error ?? "Falha no upload.");
-      return null;
-    }
-    return (await res.json()).url as string;
-  };
-
   const onImages = async (files: FileList | null) => {
     if (!files?.length) return;
-    setUploading("imagem");
-    const urls: string[] = [];
-    for (const f of Array.from(files)) {
-      const url = await upload(f);
-      if (url) urls.push(url);
+    setBusy(true);
+    try {
+      const urls: string[] = [];
+      for (const f of Array.from(files)) {
+        if (!/\.(png|jpe?g|webp)$/i.test(f.name)) {
+          alert(`"${f.name}" não é uma imagem suportada (.png .jpg .webp).`);
+          continue;
+        }
+        urls.push(await compressImage(f));
+      }
+      if (urls.length) {
+        set({ imagens: [...p.imagens, ...urls], imagem: p.imagem || urls[0] });
+      }
+    } finally {
+      setBusy(false);
     }
-    if (urls.length) {
-      set({
-        imagens: [...p.imagens, ...urls],
-        imagem: p.imagem || urls[0],
-      });
-    }
-    setUploading(null);
   };
 
   const onModel = async (files: FileList | null) => {
     if (!files?.length) return;
-    setUploading("modelo");
-    const url = await upload(files[0]);
-    if (url) set({ modelo3D: url });
-    setUploading(null);
+    const f = files[0];
+    if (!/\.(glb|gltf)$/i.test(f.name)) {
+      alert("Envie um arquivo .glb ou .gltf.");
+      return;
+    }
+    if (f.size > MAX_GLB_BYTES) {
+      alert(
+        `Arquivo com ${(f.size / 1024).toFixed(0)}KB — o limite do banco gratuito é ${MAX_GLB_BYTES / 1024}KB.\n` +
+          "Comprima o modelo (ex.: gltf.report) ou cole um link externo no campo abaixo."
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      set({ modelo3D: await fileToDataUrl(f) });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const num = (v: string) => (v === "" ? 0 : Math.max(0, +v));
+  const modelIsFile = p.modelo3D.startsWith("data:");
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-start justify-center p-4 sm:p-8 overflow-y-auto" onClick={onClose}>
@@ -364,7 +429,7 @@ function ProductForm({
             </div>
           </div>
 
-          {/* uploads */}
+          {/* imagens e modelo 3D */}
           <div className="sm:col-span-2 border-t border-line pt-5 grid sm:grid-cols-2 gap-5">
             <div>
               <label className={label}>Imagens do produto (.png .jpg .webp)</label>
@@ -372,15 +437,18 @@ function ProductForm({
               <button
                 type="button"
                 onClick={() => imgRef.current?.click()}
-                disabled={uploading !== null}
+                disabled={busy}
                 className="btn-ghost w-full rounded-xl py-3 text-xs font-bold uppercase tracking-wider text-brand-bright disabled:opacity-50"
               >
-                {uploading === "imagem" ? "Enviando…" : "+ Enviar imagens"}
+                {busy ? "Processando…" : "+ Enviar imagens"}
               </button>
+              <p className="text-[10px] text-muted mt-1.5">
+                As fotos são comprimidas automaticamente e salvas no banco.
+              </p>
               {p.imagens.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {p.imagens.map((url) => (
-                    <div key={url} className="relative group">
+                  {p.imagens.map((url, i) => (
+                    <div key={i} className="relative group">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={url}
@@ -407,24 +475,29 @@ function ProductForm({
                   ))}
                 </div>
               )}
-              {p.imagens.length > 0 && (
-                <p className="text-[10px] text-muted mt-1.5">Clique numa imagem para defini-la como principal.</p>
-              )}
             </div>
             <div>
-              <label className={label}>Modelo 3D (.glb .gltf) — opcional</label>
+              <label className={label}>Modelo 3D (.glb até {MAX_GLB_BYTES / 1024}KB) — opcional</label>
               <input ref={glbRef} type="file" accept=".glb,.gltf" className="hidden" onChange={(e) => onModel(e.target.files)} />
               <button
                 type="button"
                 onClick={() => glbRef.current?.click()}
-                disabled={uploading !== null}
+                disabled={busy}
                 className="btn-ghost w-full rounded-xl py-3 text-xs font-bold uppercase tracking-wider text-brand-bright disabled:opacity-50"
               >
-                {uploading === "modelo" ? "Enviando…" : p.modelo3D ? "Substituir modelo 3D" : "+ Enviar modelo 3D"}
+                {modelIsFile ? "Substituir arquivo 3D" : "+ Enviar arquivo 3D"}
               </button>
+              <input
+                className={`${input} mt-2`}
+                placeholder="…ou cole um link .glb externo"
+                value={modelIsFile ? "" : p.modelo3D}
+                onChange={(e) => set({ modelo3D: e.target.value.trim() })}
+              />
               {p.modelo3D && (
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-surface-2 border border-line px-3 py-2">
-                  <span className="text-xs font-semibold text-emerald-300 truncate">{p.modelo3D.split("/").pop()}</span>
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-surface-2 border border-line px-3 py-2">
+                  <span className="text-xs font-semibold text-emerald-300 truncate">
+                    {modelIsFile ? "arquivo .glb embutido" : p.modelo3D}
+                  </span>
                   <button type="button" onClick={() => set({ modelo3D: "" })} className="text-red-400 text-xs font-bold shrink-0">
                     remover
                   </button>
@@ -458,7 +531,7 @@ function ProductForm({
               if (!p.nome.trim()) return alert("Informe o nome do produto.");
               onSave(p);
             }}
-            disabled={uploading !== null}
+            disabled={busy}
             className="flex-1 btn-brand rounded-xl py-3 text-xs font-bold uppercase tracking-wider text-black disabled:opacity-60"
           >
             Salvar produto

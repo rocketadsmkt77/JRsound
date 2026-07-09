@@ -13,8 +13,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { money } from "../configurator/calc";
 import ProductsAdmin from "./ProductsAdmin";
+import { isCloud, loginAdmin, logoutAdmin, onAdminAuth } from "@/lib/client/repo";
 
-const ADMIN_PASS = "jrsound2026"; // demo — troque por autenticação JWT no backend
+// Autenticação: com Firebase configurado, login por e-mail/senha
+// (Firebase Authentication — as regras do Firestore só permitem escrita
+// para usuários logados). Sem Firebase (desenvolvimento local), senha
+// fixa "jrsound2026".
 
 type Section =
   | "dashboard"
@@ -137,8 +141,11 @@ export default function Admin() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    setAuthed(sessionStorage.getItem("jr-admin-auth") === "1");
-    setChecking(false);
+    const unsub = onAdminAuth((ok) => {
+      setAuthed(ok);
+      setChecking(false);
+    });
+    return unsub;
   }, []);
 
   if (checking) return null;
@@ -147,24 +154,45 @@ export default function Admin() {
 }
 
 function Login({ onOk }: { onOk: () => void }) {
+  const cloud = isCloud();
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const inputCls =
+    "w-full rounded-xl bg-surface-2 border border-line px-5 py-3.5 font-medium focus:outline-none focus:border-brand transition-all mb-3";
   return (
     <div className="min-h-screen flex items-center justify-center px-6 speaker-grid-bg">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_50%_30%,rgba(255,122,0,0.15),transparent_70%)]" />
       <form
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          if (pass === ADMIN_PASS) {
-            sessionStorage.setItem("jr-admin-auth", "1");
-            onOk();
-          } else setErr(true);
+          setBusy(true);
+          try {
+            const ok = await loginAdmin(email, pass);
+            if (ok) onOk();
+            else setErr(true);
+          } finally {
+            setBusy(false);
+          }
         }}
         className="relative card-premium rounded-3xl p-10 w-full max-w-sm text-center"
       >
         <Image src="/logo.png" alt="JR Sound" width={180} height={120} className="h-20 w-auto mx-auto mb-6 drop-shadow-[0_0_20px_rgba(255,122,0,0.5)]" />
         <h1 className="font-[family-name:var(--font-orbitron)] font-bold text-lg mb-1">Painel Administrativo</h1>
         <p className="text-muted text-sm font-medium mb-6">Acesso restrito à equipe JR Sound</p>
+        {cloud && (
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setErr(false);
+            }}
+            placeholder="E-mail do administrador"
+            className={inputCls}
+          />
+        )}
         <input
           type="password"
           value={pass}
@@ -173,11 +201,19 @@ function Login({ onOk }: { onOk: () => void }) {
             setErr(false);
           }}
           placeholder="Senha de acesso"
-          className="w-full rounded-xl bg-surface-2 border border-line px-5 py-3.5 font-medium focus:outline-none focus:border-brand transition-all mb-3"
+          className={inputCls}
         />
-        {err && <p className="text-red-400 text-xs font-semibold mb-3">Senha incorreta.</p>}
-        <button type="submit" className="btn-brand w-full rounded-xl py-3.5 font-[family-name:var(--font-orbitron)] text-sm font-bold uppercase tracking-widest text-black">
-          Entrar
+        {err && (
+          <p className="text-red-400 text-xs font-semibold mb-3">
+            {cloud ? "E-mail ou senha incorretos." : "Senha incorreta."}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy}
+          className="btn-brand w-full rounded-xl py-3.5 font-[family-name:var(--font-orbitron)] text-sm font-bold uppercase tracking-widest text-black disabled:opacity-60"
+        >
+          {busy ? "Verificando…" : "Entrar"}
         </button>
         <Link href="/" className="block mt-5 text-xs text-muted hover:text-brand-bright font-semibold">
           ← Voltar ao site
@@ -234,8 +270,8 @@ function Panel() {
             ← Site
           </Link>
           <button
-            onClick={() => {
-              sessionStorage.removeItem("jr-admin-auth");
+            onClick={async () => {
+              await logoutAdmin();
               location.reload();
             }}
             className="w-full text-center text-xs text-red-400/80 hover:text-red-300 font-semibold py-1"

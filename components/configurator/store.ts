@@ -5,7 +5,7 @@ import { BoxConfig, BoxShape, PlacedItem } from "./types";
 import { Product, faceOf } from "@/lib/products";
 
 export interface ConfiguratorState {
-  /** catálogo dinâmico carregado da API (somente produtos ativos) */
+  /** catálogo dinâmico (somente produtos ativos) — alimentado pelo repositório */
   products: Product[];
   productsLoaded: boolean;
   box: BoxConfig;
@@ -15,7 +15,7 @@ export interface ConfiguratorState {
   showGrid: boolean;
   lightIntensity: number; // 0..2
   projectCode: string;
-  loadProducts: () => Promise<void>;
+  setProducts: (products: Product[]) => void;
   getProduct: (id: string) => Product | undefined;
   setBox: (patch: Partial<BoxConfig>) => void;
   setShape: (shape: BoxShape) => void;
@@ -72,21 +72,15 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
   lightIntensity: 1,
   projectCode: newCode(),
 
-  loadProducts: async () => {
-    try {
-      const res = await fetch("/api/produtos?ativos=1", { cache: "no-store" });
-      if (!res.ok) return;
-      const products: Product[] = await res.json();
-      // remove da cena itens cujo produto foi desativado/excluído no painel
-      const valid = new Set(products.map((p) => p.id));
-      set((s) => ({
-        products,
-        productsLoaded: true,
-        items: s.items.filter((i) => valid.has(i.productId)),
-      }));
-    } catch {
-      // servidor indisponível — mantém o catálogo atual
-    }
+  setProducts: (all) => {
+    const products = all.filter((p) => p.ativo);
+    // remove da cena itens cujo produto foi desativado/excluído no painel
+    const valid = new Set(products.map((p) => p.id));
+    set((s) => ({
+      products,
+      productsLoaded: true,
+      items: s.items.filter((i) => valid.has(i.productId)),
+    }));
   },
 
   getProduct: (id) => get().products.find((p) => p.id === id),

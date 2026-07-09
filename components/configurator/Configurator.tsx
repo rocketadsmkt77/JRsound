@@ -6,6 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConfigurator } from "./store";
+import { subscribeProducts } from "@/lib/client/repo";
 import { Category, Product, categoryLabels } from "@/lib/products";
 import { calcProject, money } from "./calc";
 import { generatePdf, openWhatsAppQuote } from "./export";
@@ -49,26 +50,15 @@ const ledColors = ["#ff7a00", "#ff0000", "#00a2ff", "#00ff66", "#b400ff", "#ffff
 
 export default function Configurator() {
   const state = useConfigurator();
-  const { box, items, selected, projectCode, products, getProduct, loadProducts } = state;
+  const { box, items, selected, projectCode, products, getProduct, setProducts } = state;
   const [tab, setTab] = useState<Tab>("formato");
   const [panelOpen, setPanelOpen] = useState(true);
   const calc = useMemo(() => calcProject(box, items, getProduct), [box, items, products]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = items.find((i) => i.uid === selected);
   const selProduct = sel ? getProduct(sel.productId) : undefined;
 
-  // catálogo dinâmico: carrega ao abrir e mantém sincronizado com o painel
-  useEffect(() => {
-    loadProducts();
-    const interval = setInterval(loadProducts, 20000);
-    const onFocus = () => loadProducts();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-    };
-  }, [loadProducts]);
+  // catálogo dinâmico: assina o repositório (tempo real no Firestore)
+  useEffect(() => subscribeProducts(setProducts), [setProducts]);
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
