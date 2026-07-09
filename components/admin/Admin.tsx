@@ -14,6 +14,7 @@ import Link from "next/link";
 import { money } from "../configurator/calc";
 import ProductsAdmin from "./ProductsAdmin";
 import { isCloud, loginAdmin, logoutAdmin, onAdminAuth } from "@/lib/client/repo";
+import { getPageStats, pageLabels } from "@/lib/client/stats";
 
 // Autenticação: com Firebase configurado, login por e-mail/senha
 // (Firebase Authentication — as regras do Firestore só permitem escrita
@@ -55,10 +56,7 @@ const collections: Record<
       { key: "carro", label: "Carro" },
       { key: "status", label: "Status", type: "select", options: ["Novo", "Em negociação", "Cliente", "Inativo"] },
     ],
-    seed: [
-      { id: "c1", nome: "Carlos Mendes", telefone: "(99) 98888-1111", carro: "Gol G5", status: "Cliente" },
-      { id: "c2", nome: "Fernanda Lima", telefone: "(99) 97777-2222", carro: "HB20", status: "Em negociação" },
-    ],
+    seed: [],
   },
   projetos: {
     label: "Projetos",
@@ -69,9 +67,7 @@ const collections: Record<
       { key: "status", label: "Status", type: "select", options: ["Orçamento", "Aprovado", "Em produção", "Entregue"] },
       { key: "valor", label: "Valor (R$)", type: "number" },
     ],
-    seed: [
-      { id: "j1", codigo: "JR-DEMO1", cliente: "Carlos Mendes", descricao: 'Dutada 2x12" carpete + LED', status: "Em produção", valor: 3450 },
-    ],
+    seed: [],
   },
   pedidos: {
     label: "Pedidos",
@@ -82,9 +78,7 @@ const collections: Record<
       { key: "status", label: "Status", type: "select", options: ["Aguardando pagamento", "Pago", "Enviado", "Concluído", "Cancelado"] },
       { key: "total", label: "Total (R$)", type: "number" },
     ],
-    seed: [
-      { id: "o1", numero: "1042", cliente: "Fernanda Lima", itens: "2x Tweeter Bala, 1x Módulo 800W", status: "Pago", total: 930 },
-    ],
+    seed: [],
   },
   orcamentos: {
     label: "Orçamentos",
@@ -95,9 +89,7 @@ const collections: Record<
       { key: "status", label: "Status", type: "select", options: ["Novo", "Respondido", "Aprovado", "Perdido"] },
       { key: "valor", label: "Valor (R$)", type: "number" },
     ],
-    seed: [
-      { id: "q1", codigo: "JR-DEMO2", cliente: "João Pedro", origem: "Configurador 3D", status: "Novo", valor: 2780 },
-    ],
+    seed: [],
   },
   galeria: {
     label: "Galeria",
@@ -106,9 +98,7 @@ const collections: Record<
       { key: "categoria", label: "Categoria", type: "select", options: ["Som Interno", "Som Externo", "Trio", "Porta-malas", "Pickups", "SUV", "Sedan", "Antes e Depois", "Vídeos"] },
       { key: "url", label: "URL da imagem/vídeo" },
     ],
-    seed: [
-      { id: "g1", titulo: "Trio completo — Gol quadrado", categoria: "Trio", url: "" },
-    ],
+    seed: [],
   },
   banners: {
     label: "Banners",
@@ -118,12 +108,13 @@ const collections: Record<
       { key: "link", label: "Link de destino" },
       { key: "ativo", label: "Ativo", type: "select", options: ["Sim", "Não"] },
     ],
-    seed: [{ id: "b1", titulo: "Promoção módulos", url: "", link: "/#servicos", ativo: "Sim" }],
+    seed: [],
   },
 };
 
 function useCollection(name: string) {
-  const key = `jr-admin-${name}`;
+  // v2: chave nova para descartar os dados de demonstração antigos
+  const key = `jr-admin-v2-${name}`;
   const [rows, setRows] = useState<Row[]>([]);
   useEffect(() => {
     const raw = localStorage.getItem(key);
@@ -299,6 +290,13 @@ function Dashboard() {
   const { rows: pedidos } = useCollection("pedidos");
   const { rows: clientes } = useCollection("clientes");
   const { rows: projetos } = useCollection("projetos");
+  const [views, setViews] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    getPageStats().then(setViews);
+  }, []);
+
+  const totalViews = views ? Object.values(views).reduce((a, v) => a + v, 0) : 0;
 
   const faturamento =
     pedidos.reduce((a, r) => a + Number(r.total || 0), 0) +
@@ -311,8 +309,6 @@ function Dashboard() {
     { l: "Faturamento", v: money(faturamento) },
   ];
 
-  const monthly = [42, 55, 38, 70, 62, 88, 95, 74, 82, 100, 91, 97];
-
   return (
     <div>
       <Header title="Dashboard" sub="Visão geral da operação" />
@@ -324,21 +320,43 @@ function Dashboard() {
           </div>
         ))}
       </div>
-      <div className="card-premium rounded-2xl p-6">
-        <p className="text-xs font-bold uppercase tracking-wider text-muted mb-6">Movimento mensal (exemplo)</p>
-        <div className="flex items-end gap-2">
-          {monthly.map((v, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center justify-end gap-2">
-              <div
-                className="w-full rounded-t-md bg-gradient-to-t from-brand-deep via-brand to-gold transition-all hover:brightness-125"
-                style={{ height: `${v * 1.6}px` }}
-              />
-              <span className="text-[10px] text-muted font-semibold">
-                {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][i]}
-              </span>
-            </div>
-          ))}
+
+      {/* visitas ao site */}
+      <div className="card-premium rounded-2xl p-6 mb-8">
+        <div className="flex items-baseline justify-between flex-wrap gap-2 mb-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted">Visitas ao site</p>
+          <p className="text-xs text-muted font-medium">
+            contadas a cada página aberta pelos visitantes
+          </p>
         </div>
+        {views === null ? (
+          <p className="text-muted text-sm font-medium">Carregando…</p>
+        ) : Object.keys(views).length === 0 ? (
+          <p className="text-muted text-sm font-medium">
+            Ainda sem visitas registradas — os números aparecem conforme o site é acessado.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+            <div>
+              <p className="font-[family-name:var(--font-orbitron)] text-3xl font-extrabold text-gradient-gold">
+                {totalViews.toLocaleString("pt-BR")}
+              </p>
+              <p className="text-xs text-muted font-semibold uppercase tracking-wider mt-1">Total</p>
+            </div>
+            {Object.entries(views)
+              .sort((a, b) => b[1] - a[1])
+              .map(([page, n]) => (
+                <div key={page}>
+                  <p className="font-[family-name:var(--font-orbitron)] text-3xl font-extrabold text-gradient-brand">
+                    {n.toLocaleString("pt-BR")}
+                  </p>
+                  <p className="text-xs text-muted font-semibold uppercase tracking-wider mt-1">
+                    {pageLabels[page] ?? page}
+                  </p>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -363,8 +381,8 @@ function Reports() {
         <ReportCard title="Conversão de orçamentos" value={`${conversao}%`} />
       </div>
       <p className="text-muted text-sm font-medium mt-8">
-        Relatórios completos (por período, por categoria, por origem) são habilitados ao conectar o
-        banco de dados PostgreSQL — o painel demo consolida os dados locais.
+        Os indicadores são calculados a partir dos registros das seções Pedidos, Projetos e
+        Orçamentos deste painel.
       </p>
     </div>
   );
