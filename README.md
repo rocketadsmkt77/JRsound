@@ -8,8 +8,7 @@ Next.js, React Three Fiber, Tailwind CSS e Framer Motion.
 ```bash
 npm install
 npm run dev      # desenvolvimento — http://localhost:3000
-npm run build    # build de produção
-npm start        # servir build de produção
+npm run build    # gera o site estático na pasta out/ (para publicar)
 ```
 
 ## Páginas
@@ -18,13 +17,13 @@ npm start        # servir build de produção
 | --- | --- |
 | `/` | Home: hero com partículas e equalizadores, sobre, serviços, galeria e contato |
 | `/configurador` | **Configurador 3D** — a principal funcionalidade |
-| `/admin` | Painel administrativo (senha demo: `jrsound2026`) |
+| `/admin` | Painel administrativo (local: senha `jrsound2026`; produção: e-mail/senha do Firebase) |
 
 ## Configurador 3D
 
 - **8 formatos de caixa**: reta, trapézio, selada, dutada, trio, lateral, canhão e personalizado
 - **Medidas livres**: largura, altura, profundidade, espessura do MDF (9–25mm), cantos arredondados, divisórias, reforços e dutos
-- **Biblioteca 100% dinâmica**: os produtos vêm do cadastro feito no painel `/admin` (API REST). Nada de peças fixas no código — cadastrou, apareceu; desativou/excluiu, sumiu. O configurador se atualiza sozinho (ao focar a aba e a cada 20s)
+- **Biblioteca 100% dinâmica**: os produtos vêm do cadastro feito no painel `/admin`. Nada de peças fixas no código — cadastrou, apareceu; desativou/excluiu, sumiu. Com Firebase, a atualização é **em tempo real**
 - **Manipulação direta**: clique para selecionar, arraste sobre a caixa (com snap de 2,5cm e grade), gire, redimensione, duplique e exclua
 - **Câmera livre 360°** com zoom e controle de iluminação
 - **Aparência**: carpete, pintura, madeira naval, fibra ou couro; cor livre; LED com 7 cores
@@ -36,15 +35,16 @@ npm start        # servir build de produção
 
 O cadastro de produtos do painel `/admin` alimenta o Configurador 3D em tempo real:
 
-- **API REST**: `GET/POST /api/produtos`, `GET/PUT/DELETE /api/produtos/[id]`,
-  `POST /api/upload` (multipart)
-- **Banco**: arquivo `data/products.json` no servidor, criado automaticamente na
-  primeira execução com um catálogo inicial. Toda a lógica de acesso está em
-  [lib/server/store.ts](lib/server/store.ts) — para migrar para
-  PostgreSQL/Firestore basta reimplementar essas 4 funções
-- **Uploads**: imagens (`.png .jpg .webp`) e modelos 3D (`.glb .gltf`) vão para
-  `public/uploads/` e o banco guarda só a URL. Para usar Firebase Storage/S3,
-  troque apenas [app/api/upload/route.ts](app/api/upload/route.ts)
+- **Repositório com dois backends automáticos** ([lib/client/repo.ts](lib/client/repo.ts)):
+  - **Firebase Firestore** (plano gratuito) quando as variáveis
+    `NEXT_PUBLIC_FB_*` estão no `.env.local` — produção, com atualização
+    **em tempo real** no configurador
+  - `localStorage` do navegador — desenvolvimento sem Firebase
+- **Segurança**: leitura pública; escrita só para o administrador logado
+  (Firebase Authentication + [firestore.rules](firestore.rules))
+- **Imagens**: comprimidas no navegador (~30–60KB) e salvas embutidas no
+  banco — dispensa o Firebase Storage (que exigiria plano pago)
+- **Modelos 3D**: arquivo `.glb` até ~700KB embutido, ou link externo
 - **Cadastro completo**: nome, marca, modelo, categoria, descrição, preço,
   estoque, diâmetro, diâmetro de corte, medidas, profundidade, peso, cor,
   volume deslocado, litragem recomendada (alertas), ordem, ativo e
@@ -53,8 +53,8 @@ O cadastro de produtos do painel `/admin` alimenta o Configurador 3D em tempo re
   imagem do produto como plano 3D → senão um modelo automático gerado pela
   categoria. Modelos e texturas carregam sob demanda (lazy), somente quando o
   produto entra na cena
-- **Somente ativos**: o configurador consulta `/api/produtos?ativos=1`;
-  produtos desativados ou excluídos somem (inclusive das cenas em andamento)
+- **Somente ativos**: o configurador exibe apenas produtos com `ativo = true`;
+  desativados ou excluídos somem (inclusive das cenas em andamento)
 
 ## Personalização rápida
 
@@ -65,15 +65,23 @@ O cadastro de produtos do painel `/admin` alimenta o Configurador 3D em tempo re
 - **Fotos da galeria**: substitua os itens em [components/Gallery.tsx](components/Gallery.tsx)
 - **Logo**: `public/logo.png` (o arquivo original em alta está em `logo-original.png`)
 
+## Hospedagem no Firebase (gratuita, sem cartão)
+
+O site é exportado estático (`output: "export"`) e roda no **Firebase Hosting**
+gratuito, com **Firestore** (produtos) e **Authentication** (login do painel) —
+tudo no plano **Spark**. Passo a passo completo em
+**[TUTORIAL-FIREBASE.md](TUTORIAL-FIREBASE.md)**.
+
+- [.env.example](.env.example) — variáveis `NEXT_PUBLIC_FB_*` do seu projeto
+- [firebase.json](firebase.json) — configuração do Hosting (`out/`)
+- [firestore.rules](firestore.rules) — regras de segurança do banco
+- Publicação: `npm run build` + `firebase deploy --only hosting`
+
 ## Painel administrativo
 
-Gerencia clientes, **produtos (integrado ao configurador via API)**, projetos,
+Gerencia clientes, **produtos (integrado ao configurador)**, projetos,
 pedidos, orçamentos, galeria, banners e relatórios, com dashboard.
 
-As demais seções (clientes, pedidos…) ainda são demo em `localStorage`, e a
-senha é fixa (`ADMIN_PASS` em [components/admin/Admin.tsx](components/admin/Admin.tsx)).
-Próximos passos para produção:
-
-1. Migrar as demais coleções para a API (mesmo padrão de `/api/produtos`)
-2. Autenticação JWT no lugar da senha fixa (e proteger as rotas de escrita)
-3. Trocar o armazenamento local por PostgreSQL/Firebase quando for hospedar
+As demais seções (clientes, pedidos…) ainda são demo em `localStorage` do
+navegador. Próximo passo natural: migrá-las para o mesmo padrão do
+repositório de produtos (coleções no Firestore).
