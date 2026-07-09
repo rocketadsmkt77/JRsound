@@ -141,3 +141,8 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
       projectCode: newCode(),
     }),
 }));
+
+// exposto só em desenvolvimento, para testes automatizados
+if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__jrStore = useConfigurator;
+}

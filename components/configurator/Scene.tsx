@@ -232,30 +232,32 @@ function PlacedItems({ dragging, setDragging }: { dragging: string | null; setDr
         );
       })}
 
-      {/* plano invisível de arraste, alinhado à face do item */}
+      {/* superfície invisível de arraste: a própria caixa — a peça segue o
+          mouse e muda de face sozinha ao cruzar uma aresta */}
       {dragging && (() => {
         const it = items.find((i) => i.uid === dragging);
         if (!it) return null;
         const product = getProduct(it.productId);
         if (!product) return null;
         const dims = renderDims(product);
-        const face = it.face ?? "front";
         const halfW = (s(dims[0]) * it.scale) / 2;
-        const planeProps: Record<PlacedFace, { pos: [number, number, number]; rot: [number, number, number] }> = {
-          front: { pos: [0, H / 2, D / 2 + 0.02], rot: [0, 0, 0] },
-          back: { pos: [0, H / 2, -D / 2 - 0.02], rot: [0, Math.PI, 0] },
-          left: { pos: [-W / 2 - 0.02, H / 2, 0], rot: [0, -Math.PI / 2, 0] },
-          right: { pos: [W / 2 + 0.02, H / 2, 0], rot: [0, Math.PI / 2, 0] },
-          top: { pos: [0, H + 0.01, 0], rot: [-Math.PI / 2, 0, 0] },
-        };
-        const { pos, rot } = planeProps[face];
         return (
           <mesh
-            position={pos}
-            rotation={rot}
+            position={[0, H / 2, 0]}
             visible={false}
             onPointerMove={(e: ThreeEvent<PointerEvent>) => {
               e.stopPropagation();
+              const n = e.face?.normal;
+              if (!n) return;
+              // caixa sem rotação: a normal local já indica a face no mundo
+              let face: PlacedFace | null = null;
+              if (n.y > 0.9) face = "top";
+              else if (n.z > 0.9) face = "front";
+              else if (n.z < -0.9) face = "back";
+              else if (n.x > 0.9) face = "right";
+              else if (n.x < -0.9) face = "left";
+              if (!face) return; // fundo da caixa: ignora
+
               const p = e.point;
               let xCm: number;
               let yCm: number;
@@ -279,11 +281,11 @@ function PlacedItems({ dragging, setDragging }: { dragging: string | null; setDr
               const maxY = ext.h / 2 - (face === "top" ? halfDepth : halfW * 10);
               xCm = THREE.MathUtils.clamp(xCm, -Math.max(maxX, 0), Math.max(maxX, 0));
               yCm = THREE.MathUtils.clamp(yCm, -Math.max(maxY, 0), Math.max(maxY, 0));
-              updateItem(it.uid, { x: xCm, y: yCm });
+              updateItem(it.uid, { face, x: xCm, y: yCm });
             }}
             onPointerUp={() => setDragging(null)}
           >
-            <planeGeometry args={[80, 80]} />
+            <boxGeometry args={[W + 0.06, H + 0.06, D + 0.06]} />
           </mesh>
         );
       })()}
@@ -305,6 +307,11 @@ export default function Scene() {
       camera={{ position: [11, 7, 14], fov: 42 }}
       gl={{ preserveDrawingBuffer: true, antialias: true }}
       onPointerMissed={() => select(null)}
+      onCreated={(st) => {
+        if (process.env.NODE_ENV === "development") {
+          (window as unknown as Record<string, unknown>).__jrThree = st;
+        }
+      }}
       className="!touch-none"
     >
       <color attach="background" args={["#161616"]} />

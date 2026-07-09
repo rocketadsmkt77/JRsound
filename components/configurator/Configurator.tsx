@@ -302,7 +302,7 @@ export default function Configurator() {
           {/* dica */}
           {!sel && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 text-center text-xs text-muted/80 font-medium bg-black/50 backdrop-blur rounded-full px-5 py-2 pointer-events-none hidden sm:block">
-              Arraste para girar a câmera • Scroll para zoom • Clique numa peça para editar e arrastar
+              Arraste para girar a câmera • Scroll para zoom • Arraste uma peça por qualquer face da caixa
             </div>
           )}
         </div>
