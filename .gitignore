@@ -44,3 +44,6 @@ next-env.d.ts
 # banco local de produtos e uploads do painel
 /data
 /public/uploads
+
+# cache do firebase-tools
+.firebase/

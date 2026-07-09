@@ -18,7 +18,6 @@ export const metadata: Metadata = {
   title: "JR Sound — Som e Acessórios | Projetos de Som Automotivo",
   description:
     "Monte sua caixa de som personalizada em 3D, visualize em tempo real e solicite seu orçamento. Projetos, montagem e instalação de som automotivo de alto padrão.",
-  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({

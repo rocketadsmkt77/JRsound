@@ -269,29 +269,31 @@ export default function Scene() {
       onPointerMissed={() => select(null)}
       className="!touch-none"
     >
-      <color attach="background" args={["#0a0a0a"]} />
-      <fog attach="fog" args={["#0a0a0a", 30, 70]} />
+      <color attach="background" args={["#161616"]} />
+      <fog attach="fog" args={["#161616", 34, 80]} />
 
       {/* iluminação */}
-      <ambientLight intensity={0.45 * lightIntensity} />
-      <hemisphereLight intensity={0.35 * lightIntensity} color="#fff5e8" groundColor="#1a0d00" />
+      <ambientLight intensity={1.6 * lightIntensity} />
+      <hemisphereLight intensity={1.2 * lightIntensity} color="#fff5e8" groundColor="#3a2a18" />
       <spotLight
         position={[8, 14, 10]}
-        angle={0.5}
+        angle={0.55}
         penumbra={0.6}
-        intensity={260 * lightIntensity}
+        intensity={420 * lightIntensity}
         castShadow
         shadow-mapSize={[2048, 2048]}
         color="#fff2e0"
       />
-      <pointLight position={[-10, 6, -6]} intensity={60 * lightIntensity} color="#ff7a00" />
-      <pointLight position={[12, 4, -10]} intensity={40 * lightIntensity} color="#f5c453" />
-      <pointLight position={[0, 5, 14]} intensity={90 * lightIntensity} color="#fff0dd" />
+      <pointLight position={[-10, 6, -6]} intensity={90 * lightIntensity} color="#ff8f2a" />
+      <pointLight position={[12, 4, -10]} intensity={70 * lightIntensity} color="#f5c453" />
+      <pointLight position={[0, 5, 14]} intensity={260 * lightIntensity} color="#fff0dd" />
+      <directionalLight position={[-6, 10, 8]} intensity={1.4 * lightIntensity} color="#ffffff" />
+      <directionalLight position={[9, 6, 13]} intensity={1.6 * lightIntensity} color="#fff6ea" />
 
       {/* piso */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <circleGeometry args={[40, 64]} />
-        <meshStandardMaterial color="#0d0d0d" roughness={0.85} metalness={0.2} />
+        <meshStandardMaterial color="#1c1c1c" roughness={0.8} metalness={0.15} />
       </mesh>
       {showGrid && (
         <Grid
