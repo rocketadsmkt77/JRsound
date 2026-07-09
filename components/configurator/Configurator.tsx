@@ -10,7 +10,7 @@ import { subscribeProducts } from "@/lib/client/repo";
 import { Category, Product, categoryLabels } from "@/lib/products";
 import { calcProject, money } from "./calc";
 import { generatePdf, openWhatsAppQuote } from "./export";
-import { BoxShape, FinishType } from "./types";
+import { BoxShape, FinishType, PlacedFace } from "./types";
 
 const Scene = dynamic(() => import("./Scene"), {
   ssr: false,
@@ -98,48 +98,45 @@ export default function Configurator() {
 
       <div className="relative flex-1 flex overflow-hidden">
         {/* ------- painel lateral ------- */}
-        <AnimatePresence initial={false}>
-          {panelOpen && (
-            <motion.aside
-              initial={{ x: -380 }}
-              animate={{ x: 0 }}
-              exit={{ x: -380 }}
-              transition={{ type: "tween", duration: 0.25 }}
-              className="absolute lg:relative z-30 h-full w-[330px] sm:w-[360px] bg-surface/95 backdrop-blur-xl border-r border-line flex flex-col"
-            >
-              <nav className="flex border-b border-line">
-                {(
-                  [
-                    ["formato", "Formato"],
-                    ["medidas", "Medidas"],
-                    ["pecas", "Peças"],
-                    ["visual", "Visual"],
-                    ["resumo", "Resumo"],
-                  ] as [Tab, string][]
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setTab(id)}
-                    className={`flex-1 py-3.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
-                      tab === id
-                        ? "text-brand-bright border-brand"
-                        : "text-muted border-transparent hover:text-foreground"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-              <div className="flex-1 overflow-y-auto p-5 space-y-6">
-                {tab === "formato" && <ShapeTab />}
-                {tab === "medidas" && <DimensionsTab />}
-                {tab === "pecas" && <LibraryTab />}
-                {tab === "visual" && <AppearanceTab />}
-                {tab === "resumo" && <SummaryTab calc={calc} />}
-              </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
+        <aside
+          className={`absolute lg:relative z-30 h-full overflow-hidden bg-surface/95 backdrop-blur-xl flex flex-col transition-[width] duration-300 ease-out ${
+            panelOpen ? "w-[330px] sm:w-[360px] border-r border-line" : "w-0"
+          }`}
+        >
+          {/* largura interna fixa: o conteúdo não encolhe durante a animação */}
+          <div className="w-[330px] sm:w-[360px] h-full flex flex-col shrink-0">
+            <nav className="flex border-b border-line">
+              {(
+                [
+                  ["formato", "Formato"],
+                  ["medidas", "Medidas"],
+                  ["pecas", "Peças"],
+                  ["visual", "Visual"],
+                  ["resumo", "Resumo"],
+                ] as [Tab, string][]
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`flex-1 py-3.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-b-2 ${
+                    tab === id
+                      ? "text-brand-bright border-brand"
+                      : "text-muted border-transparent hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {tab === "formato" && <ShapeTab />}
+              {tab === "medidas" && <DimensionsTab />}
+              {tab === "pecas" && <LibraryTab />}
+              {tab === "visual" && <AppearanceTab />}
+              {tab === "resumo" && <SummaryTab calc={calc} />}
+            </div>
+          </div>
+        </aside>
 
         {/* toggle painel */}
         <button
@@ -236,6 +233,30 @@ export default function Configurator() {
                 <span className="font-[family-name:var(--font-orbitron)] text-xs font-bold text-brand-bright whitespace-nowrap">
                   {selProduct?.nome ?? "Peça"}
                 </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted font-semibold">Face</span>
+                  {(
+                    [
+                      ["front", "Frente"],
+                      ["back", "Trás"],
+                      ["left", "Esq."],
+                      ["right", "Dir."],
+                      ["top", "Topo"],
+                    ] as [PlacedFace, string][]
+                  ).map(([f, l]) => (
+                    <button
+                      key={f}
+                      onClick={() => state.updateItem(sel.uid, { face: f, x: 0, y: 0 })}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                        (sel.face ?? "front") === f
+                          ? "bg-brand text-black shadow-[0_0_10px_rgba(255,122,0,0.5)]"
+                          : "bg-surface-2 border border-line text-muted hover:text-foreground hover:border-brand/40"
+                      }`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
                 <label className="flex items-center gap-2 text-xs text-muted font-semibold">
                   Girar
                   <input

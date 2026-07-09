@@ -10,9 +10,14 @@ export type BoxShape =
   | "canhao"
   | "personalizado";
 
+/** face da caixa onde a peça está montada */
+export type PlacedFace = "front" | "back" | "left" | "right" | "top";
+
 export interface PlacedItem {
   uid: string;
   productId: string;
+  /** face da caixa onde a peça está montada */
+  face: PlacedFace;
   x: number; // cm, relativo ao centro da face
   y: number; // cm
   rotation: number; // graus, em torno da normal da face

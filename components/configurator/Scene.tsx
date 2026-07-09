@@ -5,9 +5,9 @@ import * as THREE from "three";
 import { Canvas, ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, Grid, ContactShadows } from "@react-three/drei";
 import { useConfigurator } from "./store";
-import { faceOf, renderDims, sizeOf } from "@/lib/products";
+import { renderDims, sizeOf } from "@/lib/products";
 import { ComponentModel, s } from "./models";
-import { FinishType } from "./types";
+import { FinishType, PlacedFace } from "./types";
 
 const SNAP_CM = 2.5;
 
@@ -163,6 +163,36 @@ function LedStrip() {
   );
 }
 
+/** transformações e limites de cada face da caixa (unidades do mundo) */
+function faceTransform(face: PlacedFace, W: number, H: number, D: number, xw: number, yw: number) {
+  const e = 0.02;
+  switch (face) {
+    case "front":
+      return { pos: [xw, H / 2 + yw, D / 2 + e], rot: [Math.PI / 2, 0, 0] } as const;
+    case "back":
+      return { pos: [xw, H / 2 + yw, -D / 2 - e], rot: [-Math.PI / 2, 0, 0] } as const;
+    case "left":
+      return { pos: [-W / 2 - e, H / 2 + yw, xw], rot: [0, 0, Math.PI / 2] } as const;
+    case "right":
+      return { pos: [W / 2 + e, H / 2 + yw, xw], rot: [0, 0, -Math.PI / 2] } as const;
+    default: // top
+      return { pos: [xw, H + e / 2, yw], rot: [0, 0, 0] } as const;
+  }
+}
+
+/** extensão útil (largura, altura) da face em cm */
+function faceExtents(face: PlacedFace, box: { width: number; height: number; depth: number }) {
+  switch (face) {
+    case "left":
+    case "right":
+      return { w: box.depth, h: box.height };
+    case "top":
+      return { w: box.width, h: box.depth };
+    default:
+      return { w: box.width, h: box.height };
+  }
+}
+
 function PlacedItems({ dragging, setDragging }: { dragging: string | null; setDragging: (v: string | null) => void }) {
   const { box, items, selected, select, updateItem, snap, getProduct } = useConfigurator();
   const W = s(box.width);
@@ -176,15 +206,12 @@ function PlacedItems({ dragging, setDragging }: { dragging: string | null; setDr
         if (!product) return null;
         const dims = renderDims(product);
         const isSel = selected === it.uid;
-        const front = faceOf(product.categoria) === "front";
-        const pos: [number, number, number] = front
-          ? [s(it.x), H / 2 + s(it.y), D / 2 + 0.02]
-          : [s(it.x), H + 0.01, s(it.y)];
+        const { pos, rot } = faceTransform(it.face ?? "front", W, H, D, s(it.x), s(it.y));
         return (
           <group
             key={it.uid}
-            position={pos}
-            rotation={front ? [Math.PI / 2, 0, 0] : [0, 0, 0]}
+            position={pos as unknown as [number, number, number]}
+            rotation={rot as unknown as [number, number, number]}
             onPointerDown={(e: ThreeEvent<PointerEvent>) => {
               e.stopPropagation();
               select(it.uid);
@@ -205,47 +232,58 @@ function PlacedItems({ dragging, setDragging }: { dragging: string | null; setDr
         );
       })}
 
-      {/* plano invisível de arraste */}
+      {/* plano invisível de arraste, alinhado à face do item */}
       {dragging && (() => {
         const it = items.find((i) => i.uid === dragging);
         if (!it) return null;
         const product = getProduct(it.productId);
         if (!product) return null;
         const dims = renderDims(product);
-        const front = faceOf(product.categoria) === "front";
+        const face = it.face ?? "front";
         const halfW = (s(dims[0]) * it.scale) / 2;
+        const planeProps: Record<PlacedFace, { pos: [number, number, number]; rot: [number, number, number] }> = {
+          front: { pos: [0, H / 2, D / 2 + 0.02], rot: [0, 0, 0] },
+          back: { pos: [0, H / 2, -D / 2 - 0.02], rot: [0, Math.PI, 0] },
+          left: { pos: [-W / 2 - 0.02, H / 2, 0], rot: [0, -Math.PI / 2, 0] },
+          right: { pos: [W / 2 + 0.02, H / 2, 0], rot: [0, Math.PI / 2, 0] },
+          top: { pos: [0, H + 0.01, 0], rot: [-Math.PI / 2, 0, 0] },
+        };
+        const { pos, rot } = planeProps[face];
         return (
           <mesh
-            position={front ? [0, H / 2, D / 2 + 0.02] : [0, H + 0.01, 0]}
-            rotation={front ? [0, 0, 0] : [-Math.PI / 2, 0, 0]}
+            position={pos}
+            rotation={rot}
             visible={false}
             onPointerMove={(e: ThreeEvent<PointerEvent>) => {
               e.stopPropagation();
               const p = e.point;
               let xCm: number;
               let yCm: number;
-              if (front) {
+              if (face === "top") {
                 xCm = p.x * 10;
+                yCm = p.z * 10;
+              } else if (face === "left" || face === "right") {
+                xCm = p.z * 10;
                 yCm = (p.y - H / 2) * 10;
               } else {
                 xCm = p.x * 10;
-                yCm = p.z * 10;
+                yCm = (p.y - H / 2) * 10;
               }
               if (snap) {
                 xCm = Math.round(xCm / SNAP_CM) * SNAP_CM;
                 yCm = Math.round(yCm / SNAP_CM) * SNAP_CM;
               }
-              const maxX = box.width / 2 - halfW * 10;
-              const maxY = front
-                ? box.height / 2 - halfW * 10
-                : box.depth / 2 - (s(dims[2]) * it.scale * 10) / 2;
+              const ext = faceExtents(face, box);
+              const halfDepth = (s(dims[2]) * it.scale * 10) / 2;
+              const maxX = ext.w / 2 - halfW * 10;
+              const maxY = ext.h / 2 - (face === "top" ? halfDepth : halfW * 10);
               xCm = THREE.MathUtils.clamp(xCm, -Math.max(maxX, 0), Math.max(maxX, 0));
               yCm = THREE.MathUtils.clamp(yCm, -Math.max(maxY, 0), Math.max(maxY, 0));
               updateItem(it.uid, { x: xCm, y: yCm });
             }}
             onPointerUp={() => setDragging(null)}
           >
-            <planeGeometry args={[60, 60]} />
+            <planeGeometry args={[80, 80]} />
           </mesh>
         );
       })()}

@@ -97,14 +97,11 @@ export const useConfigurator = create<ConfiguratorState>((set, get) => ({
     if (!product) return;
     const uid = `${productId}-${Math.random().toString(36).slice(2, 8)}`;
     const face = faceOf(product.categoria);
-    const count = get().items.filter((i) => {
-      const p = get().getProduct(i.productId);
-      return p && faceOf(p.categoria) === face;
-    }).length;
+    const count = get().items.filter((i) => i.face === face).length;
     set((s) => ({
       items: [
         ...s.items,
-        { uid, productId, x: (count % 3) * 20 - 20, y: 0, rotation: 0, scale: 1 },
+        { uid, productId, face, x: (count % 3) * 20 - 20, y: 0, rotation: 0, scale: 1 },
       ],
       selected: uid,
     }));

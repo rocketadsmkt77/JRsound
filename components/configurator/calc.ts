@@ -173,7 +173,7 @@ export function calcProject(
   }
   const frontArea = W * H;
   const speakerFrontArea = speakers
-    .filter((x) => faceOf(x.product.categoria) === "front")
+    .filter((x) => (x.item.face ?? faceOf(x.product.categoria)) === "front")
     .reduce((a, x) => a + Math.PI * Math.pow((sizeOf(x.product) / 2) * x.item.scale, 2), 0);
   if (speakerFrontArea > frontArea * 0.72) {
     alerts.push({ level: "error", text: "Os falantes não cabem na frente da caixa. Aumente largura/altura ou remova componentes." });
